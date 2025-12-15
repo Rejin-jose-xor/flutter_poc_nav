@@ -56,7 +56,11 @@ class ExpensesSliverList extends ConsumerWidget {
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final e = expenses[index];
-            return ExpenseListItem(expense: e);
+            return ExpenseListItem(
+              expense: e,
+              index: index,
+              key: ValueKey(e.id)
+            );
           },
           childCount: expenses.length,
         ),
