@@ -5,42 +5,47 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' show ConsumerWidget, Wid
 
 import '../models/expense_model.dart' show Expense;
 import '../provider/expense_provider.dart' show expensesProvider;
+import '../provider/expense_nav_provider.dart' show currentWeekProvider;
 
 class ExpenseBarChart extends ConsumerWidget {
   const ExpenseBarChart({super.key});
 
-  /// Group expenses by day (last 7 days) — accepts the expenses list.
-  List<Map<String, Object>> _groupedByDay(List<Expense> expenses) {
+  /// Group expenses by day  — accepts the expenses list.
+  List<Map<String, Object>> _groupedByDay(List<Expense> expenses, int weekOffset) {
     final now = DateTime.now();
+    final startDay = DateTime(now.year, now.month, now.day).subtract(Duration(days: 7 * weekOffset));
     final List<Map<String, Object>> list = [];
-
+    
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-    for (int i = 0; i < 7; i++) {
-      final day = DateTime(now.year, now.month, now.day - i);
+    
+    for (int i = 6; i >= 0; i--) {
+      final day = startDay.subtract(Duration(days: i));
       double total = 0;
-
+      
       for (final expense in expenses) {
-        final sameDay =
-            expense.date.year == day.year &&
-            expense.date.month == day.month &&
-            expense.date.day == day.day;
-
+        final sameDay = expense.date.year == day.year &&
+                      expense.date.month == day.month &&
+                      expense.date.day == day.day;
+        
         if (sameDay) {
           total += expense.amount;
         }
       }
-
+      
       final weekdayLabel = weekDays[day.weekday - 1];
-
+      
       list.add({
-        'label': weekdayLabel,
+        'weekday': weekdayLabel,        // e.g. "Mon"
+        'dateLabel': '${day.day}/${day.month}', // e.g. "12/12"
         'amount': total,
+        'date': day, // Store full date for other uses
       });
     }
-
-    return list.reversed.toList(); // oldest on left, newest on right
+    
+    return list;
   }
+
+
 
 double _maxDaySpending(List<Map<String, Object>> grouped) {
   return grouped.fold<double>(0.0, (max, dayData) {
@@ -54,9 +59,10 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
   Widget build(BuildContext context, WidgetRef ref) {
     // get expenses here (inside build)
     final List<Expense> expenses = ref.watch(expensesProvider);
+    final currentWeek = ref.watch(currentWeekProvider); // Gets int state
 
     // compute grouped data and maximum
-    final data = _groupedByDay(expenses);
+    final data = _groupedByDay(expenses, currentWeek);
     final double maxY = _maxDaySpending(data) == 0
         ? 100
         : (_maxDaySpending(data) * 1.2).ceil().toDouble();
@@ -69,6 +75,8 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
     final gridColor = Color.alphaBlend(cs.outline.withAlpha(30), Colors.transparent)
 ;
     final leftTitleStyle = textTheme.bodySmall?.copyWith(color: axisLabelColor);
+    final nav = ref.read(currentWeekProvider.notifier);
+    final weekOffset = ref.watch(currentWeekProvider);
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -82,6 +90,25 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
               style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_left),
+                  onPressed: nav.canGoPrevious ? nav.goPrevious : null,
+                ),
+                Text(
+                  weekOffset == 0
+                      ? 'This Week'
+                      : '${weekOffset * 7} days ago',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.arrow_right),
+                  onPressed: nav.canGoNext ? nav.goNext : null,
+                ),
+              ],
+            ),
             SizedBox(
               height: 220,
               child: BarChart(
@@ -119,18 +146,46 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
+                        reservedSize: 80,
                         getTitlesWidget: (value, meta) {
                           final index = value.toInt();
                           if (index < 0 || index >= data.length) return const SizedBox.shrink();
-                          final label = data[index]['label'] as String? ?? '';
+
+                          final weekday = data[index]['weekday'] as String? ?? '';
+                          final dateLabel = data[index]['dateLabel'] as String? ?? '';
+
                           return Padding(
                             padding: const EdgeInsets.only(top: 4.0),
-                            child: Text(
-                              label,
-                              style: textTheme.bodySmall?.copyWith(color: axisLabelColor, fontSize: 12),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Horizontal weekday
+                                Text(
+                                  weekday,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: axisLabelColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                // Vertical date
+                                RotatedBox(
+                                  quarterTurns: 3, // 270° rotation -> vertical text
+                                  child: Text(
+                                    dateLabel,
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: axisLabelColor,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
+
+
                       ),
                     ),
                   ),
