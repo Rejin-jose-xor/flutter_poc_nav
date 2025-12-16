@@ -1,30 +1,62 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:go_router/go_router.dart' show GoRouter, GoRoute;
 import 'package:flutter_poc_nav/main.dart';
+import 'package:flutter_poc_nav/provider/theme_provider.dart' show initialThemeModeProvider;
+
+
+GoRouter createTestRouter() {
+  return GoRouter(
+    initialLocation: '/',
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) {
+          return const Scaffold(
+            body: Text('Home'),
+          );
+        },
+      ),
+    ],
+  );
+}
+
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('MyApp builds with light theme', (WidgetTester tester) async {
+    final router = createTestRouter();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          initialThemeModeProvider.overrideWithValue(ThemeMode.light),
+        ],
+        child: MyApp(router: router),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+     // Just verify app structure
+    final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(materialApp.themeMode, ThemeMode.light);
+    expect(find.byType(MaterialApp), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('MyApp builds with dark theme', (WidgetTester tester) async {
+    final router = createTestRouter();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          initialThemeModeProvider.overrideWithValue(ThemeMode.dark),
+        ],
+        child: MyApp(router: router),
+      ),
+    );
+
+     // Just verify app structure
+    final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(materialApp.themeMode, ThemeMode.dark);
+    expect(find.byType(MaterialApp), findsOneWidget);
+
   });
 }
