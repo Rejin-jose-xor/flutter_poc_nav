@@ -44,9 +44,9 @@ class BudgetPage extends ConsumerWidget {
 
                     const SizedBox(height: 12),
 
-                    const RepaintBoundary(child: ExpensesPieChart()),
+                    const ExpensesPieChart(),
                     const SizedBox(height: 12),
-                    const RepaintBoundary(child: ExpenseBarChart()),
+                    const ExpenseBarChart(),
                   ],
                 ),
               ),

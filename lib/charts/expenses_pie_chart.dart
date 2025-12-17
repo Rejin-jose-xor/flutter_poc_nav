@@ -62,8 +62,8 @@ class ExpensesPieChart extends ConsumerWidget {
     final Map<Category, Color> categoryColors = {
       Category.food: cs.primary,              // main accent
       Category.leisure: cs.secondary,         // secondary accent
-      Category.travel: cs.primaryContainer,   // a container/variant color
-      Category.work: cs.secondaryContainer,   // another container/variant
+      Category.travel: cs.error,   // a container/variant color
+      Category.work: cs.onSurface,   // another container/variant
     };
 
     // label color — pick high-contrast text for slice titles
