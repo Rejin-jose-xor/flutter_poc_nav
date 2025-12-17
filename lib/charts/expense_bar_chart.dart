@@ -86,7 +86,7 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
         child: Column(
           children: [
             Text(
-              'Weekly Spending (Last 7 Days)',
+              'Weekly Spending',
               style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
@@ -94,7 +94,9 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_left),
+                  icon: const Icon(
+                    Icons.arrow_left,
+                    size: 30,),
                   onPressed: nav.canGoPrevious ? nav.goPrevious : null,
                 ),
                 Text(
@@ -104,7 +106,10 @@ double _maxDaySpending(List<Map<String, Object>> grouped) {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.arrow_right),
+                  icon: const Icon(
+                    Icons.arrow_right,
+                    size: 30,
+                  ),
                   onPressed: nav.canGoNext ? nav.goNext : null,
                 ),
               ],
