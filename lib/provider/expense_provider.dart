@@ -47,7 +47,7 @@ class ExpensesNotifier extends Notifier<List<Expense>> {
 
   /// Add an expense
   void addExpense(Expense expense) {
-    state = [...state, expense];
+    state = [expense, ...state];
     _saveToHive();
   }
 
