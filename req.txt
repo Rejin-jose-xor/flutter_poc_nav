@@ -1,0 +1,5 @@
+Create an API which stores the data in a server
+Also, need to enable offline mode, to create an autoSync.
+
+API end points should be placed inside one file.
+

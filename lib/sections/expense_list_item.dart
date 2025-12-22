@@ -122,12 +122,29 @@ class _ExpenseListItemState extends ConsumerState<ExpenseListItem> with SingleTi
                         actions: [
                           TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
                           TextButton(
-                            onPressed: () {
-                              notifier.deleteById(expense.id);
+                            onPressed: () async {
+                              // Close dialog immediately
                               Navigator.of(ctx).pop();
+
+                              final messenger = ScaffoldMessenger.of(context);
+
+                              try {
+                                final deleted = await notifier.deleteById(expense.id);
+
+                                if (!mounted) return;
+
+                                if (deleted) {}
+                              } catch (e) {
+                                if (!mounted) return;
+
+                                messenger.showSnackBar(
+                                  const SnackBar(content: Text('Failed to delete expense')),
+                                );
+                              }
                             },
                             child: const Text('Delete'),
                           ),
+
                         ],
                       ),
                     );

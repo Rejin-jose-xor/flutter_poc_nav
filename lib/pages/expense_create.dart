@@ -12,10 +12,21 @@ class ExpenseCreate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: ExpenseForm(
-        onSaved: (Expense e) {
-          ref.read(expensesProvider.notifier).addExpense(e);
-          context.pop();
+        onSaved: (Expense e) async {
+          final messenger = ScaffoldMessenger.of(context);
+          final navigator = GoRouter.of(context);
+
+          try {
+            await ref.read(expensesProvider.notifier).addExpense(e);
+            navigator.pop();
+          } catch (e) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Failed to save expense')),
+            );
+          }
         },
+
+
         onCancelled: () => Navigator.of(context).pop(),
       ),
     );

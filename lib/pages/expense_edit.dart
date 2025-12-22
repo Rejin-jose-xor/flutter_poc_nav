@@ -22,14 +22,29 @@ class ExpenseEdit extends ConsumerWidget {
     return Scaffold(
       body: ExpenseForm(
         initialExpense: original,
-        onSaved: (Expense updated) {
-          final replaced = ref.read(expensesProvider.notifier).replaceExpense(updated);
-          if (!replaced) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update expense')));
-          } else {
-            context.pop();
+        onSaved: (Expense updated) async {
+          final messenger = ScaffoldMessenger.of(context);
+          final router = GoRouter.of(context);
+
+          try {
+            final replaced =
+                await ref.read(expensesProvider.notifier).replaceExpense(updated);
+
+            if (!replaced) {
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Failed to update expense')),
+              );
+              return;
+            }
+
+            router.pop(); // success → close edit screen
+          } catch (e) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Failed to update expense')),
+            );
           }
         },
+
         onCancelled: () => Navigator.of(context).pop(),
       ),
     );
