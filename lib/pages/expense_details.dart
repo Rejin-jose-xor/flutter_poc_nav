@@ -25,22 +25,24 @@ class ExpenseDetails extends ConsumerWidget {
 
     // If item not found, schedule a safe pop and show placeholder
     if (expenseData == null) {
+      final router = GoRouter.of(context);
+      final navigator = Navigator.of(context);
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Only pop if still on this details route
-        final loc = GoRouter.of(context).location;
-        if (loc.contains('/details/$expenseId') || loc.contains('/edit/$expenseId')) {
-          if (Navigator.of(context).canPop()) {
-            context.pop();
-          } else {
-            context.go('/expenses');
-          }
+        if (navigator.canPop()) {
+          router.pop();
+        } else {
+          router.go('/expenses');
         }
       });
 
       return const Scaffold(
-        body: SafeArea(child: Center(child: Text('This expense was removed. Returning...'))),
+        body: SafeArea(
+          child: Center(child: Text('This expense was removed. Returning...')),
+        ),
       );
     }
+
 
     // Non-null: show the details UI
     final notifier = ref.read(expensesProvider.notifier);
@@ -93,26 +95,30 @@ class ExpenseDetails extends ConsumerWidget {
                             actions: [
                               TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
                               TextButton(
-                                onPressed: () {
-                                  // Close the dialog first
+                                onPressed: () async {
+                                  // Close dialog first (sync, safe)
                                   Navigator.of(ctx).pop();
 
-                                  // perform delete
-                                  final deleted = notifier.deleteById(expenseData!.id);
+                                  final router = GoRouter.of(context);
+                                  final messenger = ScaffoldMessenger.of(context);
 
-                                  // If deleted, schedule navigation back on next frame
-                                  if (deleted) {
-                                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                                      if (Navigator.of(context).canPop()) {
-                                        context.pop();
-                                      } else {
-                                        context.go('/expenses');
-                                      }
-                                    });
+                                  try {
+                                    final deleted =
+                                        await notifier.deleteById(expenseData!.id);
+
+                                    if (deleted) {
+                                      // Navigate back safely
+                                      router.pop();
+                                    }
+                                  } catch (e) {
+                                    messenger.showSnackBar(
+                                      const SnackBar(content: Text('Failed to delete expense')),
+                                    );
                                   }
                                 },
                                 child: const Text('Delete'),
                               ),
+
                             ],
                           ),
                         );

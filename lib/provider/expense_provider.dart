@@ -1,111 +1,101 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart' show Notifier, NotifierProvider;
+import 'package:flutter_riverpod/flutter_riverpod.dart'
+    show Notifier, NotifierProvider, Provider;
 import 'package:hive_flutter/hive_flutter.dart';
+
 import '../models/expense_model.dart' show Expense;
-import '../constants/common.dart' show Category;
+import '../services/expense_remote_service.dart'
+    show ExpenseRemoteService;
 
 class ExpensesNotifier extends Notifier<List<Expense>> {
   static const String _boxName = 'expensesBox';
   static const String _key = 'expenses';
 
+  static const int _pageSize = 3;
+  final int fetchSize = _pageSize + 1;
+
   Box<dynamic> get _box => Hive.box(_boxName);
+
+  /// Stack of cursors (enteredAt millis)
+  /// Each entry represents the LAST item of a page
+  final List<int> _cursorStack = [];
+
+  /// Whether another page exists AFTER the current page
+  bool _hasNextPage = false;
+  bool _isPagingStable = true;
+
+
+  // ---------------------------------------------------------------------------
+  // Paging getters (UI-safe)
+  // ---------------------------------------------------------------------------
+
+  bool get canGoNext => _hasNextPage;
+  bool get canGoFirst => !_isPagingStable;
+  bool get canGoPrev  => _isPagingStable && _cursorStack.length > 1;
+  bool get isOnFirstPage => _cursorStack.length <= 1;
+
+  // ---------------------------------------------------------------------------
+  // Build (Hive hydration)
+  // ---------------------------------------------------------------------------
 
   @override
   List<Expense> build() {
-
     final stored = _box.get(_key) as List<dynamic>?;
     if (stored == null) return <Expense>[];
 
     try {
-      // Each item expected to be Map<String, dynamic>
-      final expenses = stored.map((e) {
-        // be tolerant to types (if map was stored as Map)
-        if (e is Map) {
-          // convert to Map<String, dynamic>
-          final map = Map<String, dynamic>.from(e);
-          return Expense.fromMap(map);
-        } else {
-          // if it's something unexpected, skip by returning null
-          return null;
-        }
-      }).whereType<Expense>().toList();
-
-      return expenses;
-    } catch (err) {
-      // If parse errors happen, log and return empty list
-      // (you can optionally clear the stored data)
-      // print('Error loading expenses from hive: $err');
+      return stored
+          .whereType<Map>()
+          .map((e) => Expense.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
       return <Expense>[];
     }
-
   }
 
-  // helper to persist current state to Hive
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
   void _saveToHive() {
     final listOfMaps = state.map((e) => e.toMap()).toList();
     _box.put(_key, listOfMaps);
   }
 
-  /// Add an expense
-  void addExpense(Expense expense) {
-    state = [expense, ...state];
-    _saveToHive();
+  /// Force Riverpod rebuild when only paging metadata changed
+  void _emitSameState() {
+    state = [...state];
   }
 
-  /// Delete by id
-  bool deleteById(String id) {
-    final before = state.length;
-    state = state.where((e) => e.id != id).toList();
-    final after = state.length;
-    final changed = before != after;
-    if (changed) _saveToHive();
-    return changed;
+  // ---------------------------------------------------------------------------
+  // CRUD
+  // ---------------------------------------------------------------------------
+
+  Future<void> addExpense(Expense expense) async {
+    await ExpenseRemoteService.createExpense(expense);
+    await loadFirstPage();
   }
 
-  /// Edit using copyWith
-  bool editExpense(
-    String id, {
-    String? title,
-    double? amount,
-    DateTime? date,
-    Category? category,
-    String? description,
-  }) {
-    bool found = false;
+Future<bool> deleteById(String id) async {
+  await ExpenseRemoteService.deleteExpense(id);
 
-    state = state.map((e) {
-      if (e.id != id) return e;
-      found = true;
-      return e.copyWith(
-        title: title,
-        amount: amount,
-        date: date,
-        category: category,
-        description: description,
-      );
-    }).toList();
+  _isPagingStable = false; // history invalid
+  _emitSameState();        // FORCE UI UPDATE NOW
 
-    if (found) _saveToHive();
-    return found;
-  }
+  await _reloadCurrentPage();
+  return true;
+}
 
-  /// Replace whole expense with updated object (shortcut)
-  bool replaceExpense(Expense updated) {
-    bool exists = false;
+Future<bool> replaceExpense(Expense updated) async {
+  await ExpenseRemoteService.updateExpense(updated);
 
-    state = state.map((e) {
-      if (e.id == updated.id) {
-        exists = true;
-        return updated;
-      }
-      return e;
-    }).toList();
+  _isPagingStable = false;
+  _emitSameState();        // FORCE UI UPDATE NOW
 
-    if (exists) _saveToHive();
+  await _reloadCurrentPage();
+  return true;
+}
 
-    return exists;
-  }
 
-  /// Get a single expense
   Expense? getById(String id) {
     try {
       return state.firstWhere((e) => e.id == id);
@@ -114,12 +104,146 @@ class ExpensesNotifier extends Notifier<List<Expense>> {
     }
   }
 
-  /// Clear all
-  void clear() {
+  Future<void> clear() async {
+    await ExpenseRemoteService.clearAll();
     state = [];
+    _cursorStack.clear();
+    _hasNextPage = false;
     _saveToHive();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Paging
+  // ---------------------------------------------------------------------------
+
+  /// Load the latest page
+  Future<void> loadFirstPage() async {
+    _cursorStack.clear();
+    _isPagingStable = true; // history rebuilt from source of truth
+
+    final fetched = await ExpenseRemoteService.fetchExpensesPage(
+      pageSize: fetchSize,
+    );
+
+    _hasNextPage = fetched.length > _pageSize;
+
+    final expenses = fetched.take(_pageSize).toList();
+    state = expenses;
+    _saveToHive();
+
+    if (expenses.isNotEmpty) {
+      _cursorStack.add(
+        expenses.last.enteredAt.millisecondsSinceEpoch,
+      );
+    }
+
+    _emitSameState();
+  }
+
+
+  /// Load next (older) page
+  Future<void> loadNextPage() async {
+    if (!canGoNext) return;
+
+    final endAt = _cursorStack.last - 1;
+
+    final fetched = await ExpenseRemoteService.fetchExpensesPage(
+      pageSize: fetchSize,
+      endAt: endAt,
+    );
+
+    _hasNextPage = fetched.length > _pageSize;
+
+    final expenses = fetched.take(_pageSize).toList();
+    if (expenses.isEmpty) return;
+
+    state = expenses;
+    _saveToHive();
+
+    _cursorStack.add(
+      expenses.last.enteredAt.millisecondsSinceEpoch,
+    );
+
+    _emitSameState();
+  }
+
+  /// Load previous (newer) page
+  Future<void> loadPrevPage() async {
+    if (_cursorStack.length <= 1) return;
+
+    // Remove current page cursor
+    _cursorStack.removeLast();
+
+    final prevCursor =
+        _cursorStack.length == 1 ? null : _cursorStack.last - 1;
+
+    final fetched = await ExpenseRemoteService.fetchExpensesPage(
+      pageSize: fetchSize,
+      endAt: prevCursor,
+    );
+
+    _hasNextPage = fetched.length > _pageSize;
+
+    final expenses = fetched.take(_pageSize).toList();
+    state = expenses;
+    _saveToHive();
+
+    _emitSameState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal reload (used after delete/update)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _reloadCurrentPage() async {
+    int? endAt;
+
+    if (_cursorStack.length > 1) {
+      endAt = _cursorStack[_cursorStack.length - 2] - 1;
+    }
+
+    final fetched = await ExpenseRemoteService.fetchExpensesPage(
+      pageSize: fetchSize,
+      endAt: endAt,
+    );
+
+    _hasNextPage = fetched.length > _pageSize;
+
+    final expenses = fetched.take(_pageSize).toList();
+
+    // Edge case: page became empty after delete → go back
+    if (expenses.isEmpty && _cursorStack.length > 1) {
+      _cursorStack.removeLast();
+      await loadPrevPage();
+      return;
+    }
+
+    state = expenses;
+    _saveToHive();
+    _emitSameState();
   }
 }
 
+// -----------------------------------------------------------------------------
+// Providers
+// -----------------------------------------------------------------------------
+
 final expensesProvider =
-    NotifierProvider<ExpensesNotifier, List<Expense>>(ExpensesNotifier.new);
+    NotifierProvider<ExpensesNotifier, List<Expense>>(
+  ExpensesNotifier.new,
+);
+
+final canGoNextProvider = Provider<bool>((ref) {
+  ref.watch(expensesProvider); // makes it reactive
+  return ref.read(expensesProvider.notifier).canGoNext;
+});
+
+final canGoPrevProvider = Provider<bool>((ref) {
+  ref.watch(expensesProvider);
+  return ref.read(expensesProvider.notifier).canGoPrev;
+});
+
+final canGoFirstProvider = Provider<bool>((ref) {
+  ref.watch(expensesProvider);
+  return ref.read(expensesProvider.notifier).canGoFirst;
+});
