@@ -4,7 +4,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import 'package:go_router/go_router.dart';
 import '../app_route_constants.dart' show MyAppRouteConstants;
 import '../models/expense_model.dart' show Expense;
-import '../provider/expense_provider.dart' show expensesProvider;
+import '../provider/expense_provider.dart' show expensesProvider, expenseSyncStatusProvider;
 
 class ExpenseListItem extends ConsumerStatefulWidget {
   final Expense expense;
@@ -74,6 +74,10 @@ class _ExpenseListItemState extends ConsumerState<ExpenseListItem> with SingleTi
     final notifier = ref.read(expensesProvider.notifier);
     final expense = widget.expense;
 
+    final syncStatus = ref.watch(expenseSyncStatusProvider(expense.id));
+
+
+
     return FadeTransition(
       opacity: _fade,
       child: SlideTransition(
@@ -98,7 +102,20 @@ class _ExpenseListItemState extends ConsumerState<ExpenseListItem> with SingleTi
                     GoRouter.of(context).pushNamed(MyAppRouteConstants.expenseDetailsRouteName,pathParameters: {'id': expense.id});
                   }, 
                   child: const Text('View Item'),
-                )
+                ),
+                const SizedBox(height: 15,),
+                if (syncStatus != 'synced')
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Pending',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
               ],
             ),
             trailing: Row(
