@@ -14,7 +14,7 @@ class ExpenseRemoteService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(expense.toMap()),
     );
-
+    print("inside api call of add expense");
     if (response.statusCode >= 400) {
       throw Exception('Create failed');
     }
